@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from itertools import chain
 from typing import TYPE_CHECKING
@@ -305,7 +306,7 @@ class DropsCampaign:
 
     def _base_can_earn(self, channel: Channel | None = None) -> bool:
         return (
-            self.linked  # account is connected
+            (self.linked or os.environ.get('UNLINKED_CAMPAIGNS') == '1')  # account is connected
             and self.active  # campaign is active
             # channel isn't specified, or there's no ACL, or the channel is in the ACL
             and (channel is None or not self.allowed_channels or channel in self.allowed_channels)
@@ -319,7 +320,7 @@ class DropsCampaign:
         # Same as can_earn, but doesn't check the channel
         # and uses a future timestamp to see if we can earn this campaign later
         return (
-            self.linked
+            (self.linked or os.environ.get('UNLINKED_CAMPAIGNS') == '1')
             and self.ends_at > datetime.now(timezone.utc)
             and self.starts_at < stamp
             and any(drop.can_earn_within(stamp) for drop in self.drops)
