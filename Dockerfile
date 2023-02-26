@@ -14,7 +14,7 @@ RUN pip install -r requirements.txt
 # Execute every command with the virtual display active
 ENTRYPOINT ["xvfb-run"]
 ENV UNLINKED_CAMPAIGNS=1
-CMD ["timeout", "30m", "python", "main.py"]
+CMD ["timeout", "15m", "python", "main.py"]
 
 # Example command to build:
 # docker build -t twitch_drops_miner .
