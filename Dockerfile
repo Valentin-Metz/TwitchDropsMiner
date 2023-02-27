@@ -14,7 +14,7 @@ RUN chmod +x ./docker_entrypoint.sh
 ENTRYPOINT ["./docker_entrypoint.sh"]
 
 ENV UNLINKED_CAMPAIGNS=1
-CMD ["timeout", "15m", "python", "main.py"]
+CMD ["timeout", "60m", "python", "main.py"]
 
 # Example command to build:
 # docker build -t twitch_drops_miner .
