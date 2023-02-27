@@ -10,8 +10,9 @@ WORKDIR /TwitchDropsMiner/
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
-# Execute every command with the virtual display active
-ENTRYPOINT ["xvfb-run"]
+RUN chmod +x ./docker_entrypoint.sh
+ENTRYPOINT ["./docker_entrypoint.sh"]
+
 ENV UNLINKED_CAMPAIGNS=1
 CMD ["timeout", "15m", "python", "main.py"]
 
