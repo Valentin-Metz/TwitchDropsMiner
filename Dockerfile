@@ -4,8 +4,7 @@ FROM python:3.9-bullseye
 RUN apt-get update && apt-get upgrade -y
 RUN apt-get install xvfb -y
 
-RUN git clone https://github.com/DevilXD/TwitchDropsMiner.git
-COPY ./* /TwitchDropsMiner/
+COPY . /TwitchDropsMiner/
 WORKDIR /TwitchDropsMiner/
 
 RUN pip install --upgrade pip
