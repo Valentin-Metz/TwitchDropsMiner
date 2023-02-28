@@ -1,0 +1,18 @@
+name: Sync Fork
+on:
+  push:
+  workflow_dispatch:
+  schedule:
+      - cron: '0 * * * *'
+
+jobs:
+  sync_fork:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: tgymnich/fork-sync@v1.8
+        with:
+          base: master
+          head: master
+          retries: 1
+          ignore_fail: true
+          token: ${{ secrets.PERSONAL_TOKEN }}
