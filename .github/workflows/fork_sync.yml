@@ -3,7 +3,7 @@ on:
   push:
   workflow_dispatch:
   schedule:
-      - cron: '0 * * * *'
+    - cron: '0 * * * *'
 
 jobs:
   sync_fork:
@@ -14,5 +14,6 @@ jobs:
           base: master
           head: master
           retries: 1
+          retry_after: 10
           ignore_fail: true
           token: ${{ secrets.PERSONAL_TOKEN }}
