@@ -2,7 +2,7 @@ FROM python:3.9-bullseye
 
 # Install xvfb - a virtual X display server for the GUI to display to
 RUN apt-get update && apt-get upgrade -y
-RUN apt-get install xvfb -y
+RUN apt-get install libgirepository1.0-dev xvfb -y
 
 COPY . /TwitchDropsMiner/
 WORKDIR /TwitchDropsMiner/
