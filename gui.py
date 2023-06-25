@@ -18,7 +18,6 @@ from datetime import datetime, timedelta, timezone
 from tkinter import Tk, ttk, StringVar, DoubleVar, IntVar
 from typing import Any, Union, Tuple, TypedDict, NoReturn, Generic, TYPE_CHECKING
 
-import pystray
 from yarl import URL
 from PIL.ImageTk import PhotoImage
 from PIL import Image as Image_module
@@ -1035,7 +1034,7 @@ class TrayIcon:
 
     def __init__(self, manager: GUIManager, master: ttk.Widget):
         self._manager = manager
-        self.icon: pystray.Icon | None = None
+        self.icon = None
         self.icon_image = Image_module.open(resource_path("pickaxe.ico"))
         self._button = ttk.Button(master, command=self.minimize, text=_("gui", "tray", "minimize"))
         self._button.grid(column=0, row=0, sticky="ne")
@@ -1063,12 +1062,7 @@ class TrayIcon:
         def bridge(func):
             return lambda: loop.call_soon_threadsafe(func)
 
-        menu = pystray.Menu(
-            pystray.MenuItem(_("gui", "tray", "show"), bridge(self.restore), default=True),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem(_("gui", "tray", "quit"), bridge(self.quit)),
-        )
-        self.icon = pystray.Icon("twitch_miner", self.icon_image, self.get_title(drop), menu)
+        self.icon = None
         # self.icon.run_detached()
         loop.run_in_executor(None, self.icon.run)
 
