@@ -1144,7 +1144,7 @@ class InventoryOverview:
         self._filters = {
             "not_linked": IntVar(master, 1),
             "upcoming": IntVar(master, 1),
-            "expired": IntVar(master, 0),
+            "expired": IntVar(master, 1),
             "excluded": IntVar(master, 0),
             "finished": IntVar(master, 0),
         }
@@ -1233,7 +1233,10 @@ class InventoryOverview:
         priority_only = self._settings.priority_only
         if (
             (not_linked or campaign.linked)
-            and (campaign.active or upcoming and campaign.upcoming or expired and campaign.expired)
+            and (
+                campaign.active
+                or upcoming and campaign.upcoming
+                or expired and campaign.expired)
             and (
                 excluded or (
                     campaign.game.name not in self._settings.exclude
