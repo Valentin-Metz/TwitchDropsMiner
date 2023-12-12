@@ -166,6 +166,7 @@ class GUISettingsGeneral(TypedDict):
     tray: str
     tray_notifications: str
     priority_only: str
+    unlinked_campaigns: str
     proxy: str
 
 
@@ -363,6 +364,7 @@ default_translation: Translation = {
                 "tray": "Autostart into tray: ",
                 "tray_notifications": "Tray notifications: ",
                 "priority_only": "Priority Only: ",
+                "unlinked_campaigns": "Allow Unlinked Campaigns: ",
                 "proxy": "Proxy (requires restart):",
             },
             "game_name": "Game name",
