@@ -18,6 +18,7 @@ class SettingsFile(TypedDict):
     exclude: set[str]
     priority: list[str]
     priority_only: bool
+    priority_by_time: bool
     unlinked_campaigns: bool
     autostart_tray: bool
     connection_quality: int
@@ -30,6 +31,7 @@ default_settings: SettingsFile = {
     "exclude": set(),
     "autostart": False,
     "priority_only": True,
+    "priority_by_time": False,
     "unlinked_campaigns": False,
     "autostart_tray": False,
     "connection_quality": 1,
@@ -54,6 +56,7 @@ class Settings:
     exclude: set[str]
     priority: list[str]
     priority_only: bool
+    priority_by_time: bool
     unlinked_campaigns: bool
     autostart_tray: bool
     connection_quality: int
