@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import sys
 import json
@@ -825,6 +826,7 @@ class Twitch:
                 priority = self.settings.priority
                 priority_only = self.settings.priority_only
                 priority_by_time = self.settings.priority_by_time
+                unlinked_campaigns = self.settings.unlinked_campaigns or os.environ.get('UNLINKED_CAMPAIGNS') == '1'
                 next_hour = datetime.now(timezone.utc) + timedelta(hours=1)
                 campaigns = self.inventory
                 campaigns.sort(key=lambda c: c.ends_at, reverse=False) # lets us give priority to campaigns ending soonest later on
@@ -837,6 +839,8 @@ class Twitch:
                         and game.name not in exclude # and isn't excluded
                         # and isn't excluded by priority_only
                         and (not priority_only or game.name in priority)
+                        # and user wants unlinked games or the game is linked
+                        and (unlinked_campaigns or campaign.linked)
                         # and can be progressed within the next hour
                         and campaign.can_earn_within(next_hour)
                     ):

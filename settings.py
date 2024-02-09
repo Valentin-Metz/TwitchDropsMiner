@@ -19,6 +19,7 @@ class SettingsFile(TypedDict):
     priority: list[str]
     priority_only: bool
     priority_by_time: bool
+    unlinked_campaigns: bool
     autostart_tray: bool
     connection_quality: int
     tray_notifications: bool
@@ -31,6 +32,7 @@ default_settings: SettingsFile = {
     "autostart": False,
     "priority_only": True,
     "priority_by_time": False,
+    "unlinked_campaigns": False,
     "autostart_tray": False,
     "connection_quality": 1,
     "language": DEFAULT_LANG,
@@ -55,6 +57,7 @@ class Settings:
     priority: list[str]
     priority_only: bool
     priority_by_time: bool
+    unlinked_campaigns: bool
     autostart_tray: bool
     connection_quality: int
     tray_notifications: bool
