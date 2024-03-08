@@ -1455,8 +1455,9 @@ class _SettingsVars(TypedDict):
     autostart: IntVar
     priority_only: IntVar
     priority_by_time: IntVar
+    unlinked_campaigns: IntVar
     tray_notifications: IntVar
-   
+
 
 
 class SettingsPanel:
@@ -1472,6 +1473,7 @@ class SettingsPanel:
             "autostart": IntVar(master, self._settings.autostart),
             "priority_only": IntVar(master, self._settings.priority_only),
             "priority_by_time": IntVar(master, self._settings.priority_by_time),
+            "unlinked_campaigns": IntVar(master, self._settings.unlinked_campaigns),
             "tray_notifications": IntVar(master, self._settings.tray_notifications),
         }
         master.rowconfigure(0, weight=1)
@@ -1534,6 +1536,12 @@ class SettingsPanel:
         ).grid(column=0, row=(irow := irow + 1), sticky="e")
         ttk.Checkbutton(
             checkboxes_frame, variable=self._vars["priority_by_time"], command=self.priority_by_time
+        ).grid(column=1, row=irow, sticky="w")
+        ttk.Label(
+            checkboxes_frame, text=_("gui", "settings", "general", "unlinked_campaigns")
+        ).grid(column=0, row=(irow := irow + 1), sticky="e")
+        ttk.Checkbutton(
+            checkboxes_frame, variable=self._vars["unlinked_campaigns"], command=self.unlinked_campaigns
         ).grid(column=1, row=irow, sticky="w")
         # proxy frame
         proxy_frame = ttk.Frame(center_frame2)
@@ -1749,6 +1757,8 @@ class SettingsPanel:
 
     def priority_by_time(self) -> None:
         self._settings.priority_by_time = bool(self._vars["priority_by_time"].get())
+    def unlinked_campaigns(self) -> None:
+        self._settings.unlinked_campaigns = bool(self._vars["unlinked_campaigns"].get())
 
     def exclude_add(self) -> None:
         game_name: str = self._exclude_entry.get()
@@ -2269,6 +2279,7 @@ if __name__ == "__main__":
                 language="English",
                 priority_only=False,
                 priority_by_time=False,
+                unlinked_campaigns=False,
                 autostart_tray=False,
                 exclude={"Lit Game"},
             )
