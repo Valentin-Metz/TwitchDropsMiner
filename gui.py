@@ -12,6 +12,7 @@ from collections import abc
 from textwrap import dedent
 from math import log10, ceil
 from dataclasses import dataclass
+from time import time
 from tkinter.font import Font, nametofont
 from functools import partial, cached_property
 from datetime import datetime, timedelta, timezone
@@ -686,6 +687,8 @@ class CampaignProgress:
 
     def start_timer(self):
         self._manager.print(f"Progress: {self._drop.current_minutes}/{self._drop.required_minutes} - {self._drop.campaign}")
+        with open('healthcheck.timestamp', 'w') as f:
+            f.write(str(int(time())))
         if self._timer_task is None:
             if self._drop is None or self._drop.remaining_minutes <= 0:
                 # if we're starting the timer at 0 drop minutes,

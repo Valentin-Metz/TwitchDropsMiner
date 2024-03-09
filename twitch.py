@@ -1160,6 +1160,8 @@ class Twitch:
                 trigger_type = "Cleanup"
             else:
                 trigger_type = "Points"
+            with open('healthcheck.timestamp', 'w') as f:
+                f.write(str(int(next_trigger.timestamp())))
             logger.log(
                 CALL,
                 (

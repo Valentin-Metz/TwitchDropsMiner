@@ -16,5 +16,6 @@
 log.txt
 cookies.jar
 settings.json
+healthcheck.timestamp
 
 Dockerfile

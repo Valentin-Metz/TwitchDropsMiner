@@ -16,6 +16,7 @@ __pycache__
 log.txt
 /lock.file
 settings.json
+healthcheck.timestamp
 /lang/English.json
 # AppImage
 /AppDir
