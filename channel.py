@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import asyncio
 import logging
+import validators
 from base64 import b64encode
 from functools import cached_property
 from typing import Any, SupportsInt, TYPE_CHECKING
@@ -223,21 +224,21 @@ class Channel:
         For mobile view, spade_url is available immediately from the page, skipping step #2.
         """
         SETTINGS_PATTERN: str = (
-            r'src="(https://static\.twitchcdn\.net/config/settings\.[0-9a-f]{32}\.js)"'
+            r'src="(https://[\w.]+/config/settings\.[0-9a-f]{32}\.js)"'
         )
         SPADE_PATTERN: str = (
             r'"spade_?url": ?"(https://video-edge-[.\w\-/]+\.ts(?:\?allow_stream=true)?)"'
         )
-        async with self._twitch.request("GET", self.url) as response:
-            streamer_html: str = await response.text(encoding="utf8")
+        async with self._twitch.request("GET", self.url) as response1:
+            streamer_html: str = await response1.text(encoding="utf8")
         match = re.search(SPADE_PATTERN, streamer_html, re.I)
         if not match:
             match = re.search(SETTINGS_PATTERN, streamer_html, re.I)
             if not match:
                 raise MinerException("Error while spade_url extraction: step #1")
             streamer_settings = match.group(1)
-            async with self._twitch.request("GET", streamer_settings) as response:
-                settings_js: str = await response.text(encoding="utf8")
+            async with self._twitch.request("GET", streamer_settings) as response2:
+                settings_js: str = await response2.text(encoding="utf8")
             match = re.search(SPADE_PATTERN, settings_js, re.I)
             if not match:
                 raise MinerException("Error while spade_url extraction: step #2")
@@ -377,6 +378,58 @@ class Channel:
         return {"data": (b64encode(json_minify(payload).encode("utf8"))).decode("utf8")}
 
     async def send_watch(self) -> bool:
+        """
+        Start of fix for 2024/5 API Change
+        """
+        try:
+            response: JsonType = await self._twitch.gql_request(        # Gets signature and value
+                GQL_OPERATIONS["PlaybackAccessToken"].with_variables({"login": self._login})
+                )
+        except MinerException as exc:
+            raise MinerException(f"Channel: {self._login}") from exc
+        signature: JsonType | None = response["data"]['streamPlaybackAccessToken']["signature"]
+        value: JsonType | None = response["data"]['streamPlaybackAccessToken']["value"]
+        if not signature or not value:
+            return False
+
+        RequestBroadcastQualitiesURL = f"https://usher.ttvnw.net/api/channel/hls/{self._login}.m3u8?sig={signature}&token={value}"
+
+        try:
+            async with self._twitch.request(                            # Gets list of streams
+                "GET", RequestBroadcastQualitiesURL
+            ) as response1:
+                BroadcastQualities = await response1.text()
+        except RequestException:
+            return False
+        
+        BroadcastLowestQualityURL = BroadcastQualities.split("\n")[-1]  # Just takes the last line, this could probably be handled better in the future
+        if not validators.url(BroadcastLowestQualityURL):
+            return False
+
+        try:
+            async with self._twitch.request(                            # Gets actual streams
+                "GET", BroadcastLowestQualityURL
+            ) as response2:
+                StreamURLList = await response2.text()
+        except RequestException:
+            return False
+
+        StreamLowestQualityURL = StreamURLList.split("\n")[-2] # For whatever reason this includes a blank line at the end, this should probably be handled better in the future
+        if not validators.url(StreamLowestQualityURL):
+            return False
+
+        try:
+            async with self._twitch.request(                            # Downloads the stream
+                "HEAD", StreamLowestQualityURL
+            ) as response3:                                             # I lied, well idk, but this code doesn't listen for the actual video data
+                return response3.status == 200
+        except RequestException:
+            return False
+        """
+        End of fix for 2024/5 API Change.
+        Old code below.
+        """
+
         """
         This uses the encoded payload on spade url to simulate watching the stream.
         Optimally, send every 60 seconds to advance drops.
