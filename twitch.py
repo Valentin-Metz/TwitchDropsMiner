@@ -830,7 +830,7 @@ class Twitch:
                 exclude = self.settings.exclude
                 priority = self.settings.priority
                 priority_only = self.settings.priority_only
-                priority_by_time = self.settings.priority_by_time
+                priority_by_time = self.settings.priority_by_time or os.environ.get('PRIORITY_BY_TIME') == '1'
                 unlinked_campaigns = self.settings.unlinked_campaigns or os.environ.get('UNLINKED_CAMPAIGNS') == '1'
                 next_hour = datetime.now(timezone.utc) + timedelta(hours=1)
                 campaigns = self.inventory

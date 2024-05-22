@@ -16,6 +16,7 @@ ENTRYPOINT ["./docker_entrypoint.sh"]
 HEALTHCHECK --interval=10s --timeout=5s --start-period=1m --retries=3 CMD ./healthcheck.sh
 
 ENV UNLINKED_CAMPAIGNS=1
+ENV PRIORITY_BY_TIME=0
 CMD ["python", "main.py", "-vvv"]
 
 # Example command to build:
