@@ -9,8 +9,10 @@ jobs:
   sync_fork:
     runs-on: ubuntu-latest
     steps:
-      - uses: tgymnich/fork-sync@v1.8
+      - uses: tgymnich/fork-sync@v1.9
         with:
+          owner: Windows200000
+          repo: TwitchDropsMiner-updated
           base: master
           head: master
           retries: 1
