@@ -166,7 +166,7 @@ class GUISettingsGeneral(TypedDict):
     tray: str
     tray_notifications: str
     priority_only: str
-    priority_by_time: str
+    priority_by_ending_soonest: str
     unlinked_campaigns: str
     proxy: str
 
@@ -365,7 +365,7 @@ default_translation: Translation = {
                 "tray": "Autostart into tray: ",
                 "tray_notifications": "Tray notifications: ",
                 "priority_only": "Priority Only: ",
-                "priority_by_time": "Prioritize campaigns by end date: ",
+                "priority_by_ending_soonest": "Prioritize by end soonest: ",
                 "unlinked_campaigns": "Allow Unlinked Campaigns: ",
                 "proxy": "Proxy (requires restart):",
             },

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import re
 import sys
 import json
@@ -748,14 +747,18 @@ class Twitch:
         Return a priority number for a given channel.
 
         Higher number, higher priority.
-        Priority 0 is given to channels streaming a game not on the priority list.
-        Priority -1 is given to OFFLINE channels, or channels streaming no particular games.
+        Priority requested games are > 0
+        Non-priority games are < 0
+
+        (maxsize - 1) Priority is given to OFFLINE channels, or channels streaming no particular games.
+        (maxsize - 2) Priority is given to channels streaming games without campaigns.
         """
         if (game := channel.game) is None:
             # None when OFFLINE or no game set
-            return -1
+            return -(sys.maxsize - 1)
         elif game not in self.wanted_games:
-            return 0
+            # Any channel thats is filtered out by filter_campaigns()
+            return -(sys.maxsize - 2)
         return self.wanted_games[game]
 
     @staticmethod
@@ -827,46 +830,21 @@ class Twitch:
                 # figure out which games we want
                 self.wanted_games.clear()
                 priorities = self.gui.settings.priorities()
-                exclude = self.settings.exclude
-                priority = self.settings.priority
-                priority_only = self.settings.priority_only
-                priority_by_time = self.settings.priority_by_time or os.environ.get('PRIORITY_BY_TIME') == '1'
-                unlinked_campaigns = self.settings.unlinked_campaigns or os.environ.get('UNLINKED_CAMPAIGNS') == '1'
-                next_hour = datetime.now(timezone.utc) + timedelta(hours=1)
+                priority_by_ending_soonest = self.settings.priority_by_ending_soonest
                 campaigns = self.inventory
-                campaigns.sort(key=lambda c: c.ends_at, reverse=False) # lets us give priority to campaigns ending soonest later on
-                max_priority = len(campaigns)
-                max_wanted_priority = max_priority + len(priorities)
-                for campaign in campaigns:
+                filtered_campaigns = list(filter(self.filter_campaigns, campaigns))
+                for i, campaign in enumerate(filtered_campaigns):
                     game = campaign.game
-                    if (
-                        game not in self.wanted_games # isn't already there
-                        and game.name not in exclude # and isn't excluded
-                        # and isn't excluded by priority_only
-                        and (not priority_only or game.name in priority)
-                        # and user wants unlinked games or the game is linked
-                        and (unlinked_campaigns or campaign.linked)
-                        # and can be progressed within the next hour
-                        and campaign.can_earn_within(next_hour)
-                    ):
-                        # get users priority preference
-                        game_priority = priorities.get(game.name, 0)
-
-                        if (game_priority):
-                            if (not priority_by_time):
-                                # keep games ordered by priorty list
-                                #    max_wanted_priority does not change in this case, consider it "0"
-                                self.wanted_games[game] = game_priority + max_wanted_priority
-                            else:
-                                # sort priority games by time ending soonest
-                                #    games are already sorted by ends_at, max_wanted_priority only goes down for each added to the wanted_games list
-                                self.wanted_games[game] = max_wanted_priority
-                                max_wanted_priority = max_wanted_priority - 1
+                    # get users priority preference
+                    game_priority = priorities.get(game.name, 0)
+                    if (game_priority):
+                        if (priority_by_ending_soonest):
+                           # list is sorted by end_at so this keeps them in order
+                           self.wanted_games[game] = len(filtered_campaigns) - i
                         else:
-                           # non-excluded games with no priority are placed last, below priority ones
-                           #    but sorted by end time to maximize amount of potential drops
-                           self.wanted_games[game] = max_priority
-                           max_priority = max_priority - 1
+                            self.wanted_games[game] = game_priority
+                    else:
+                        self.wanted_games[game] = -i
                 full_cleanup = True
                 self.restart_watching()
                 self.change_state(State.CHANNELS_CLEANUP)
@@ -921,11 +899,10 @@ class Twitch:
                 # NOTE: we use another set so that we can set them online separately
                 no_acl: set[Game] = set()
                 acl_channels: OrderedSet[Channel] = OrderedSet()
-                next_hour = datetime.now(timezone.utc) + timedelta(hours=1)
                 for campaign in self.inventory:
                     if (
                         campaign.game in self.wanted_games
-                        and campaign.can_earn_within(next_hour)
+                        and campaign.can_earn_within_next_hour()
                     ):
                         if campaign.allowed_channels:
                             acl_channels.update(campaign.allowed_channels)
@@ -1644,6 +1621,26 @@ class Twitch:
         }
         return self._merge_data(campaign_ids, fetched_data)
 
+    def filter_campaigns(self, campaign: list[DropsCampaign]):
+        exclude = self.settings.exclude
+        priority = self.settings.priority
+        priority_only = self.settings.priority_only
+        unlinked_campaigns = self.settings.unlinked_campaigns
+        game = campaign.game
+        if (
+            game not in self.wanted_games # isn't already there
+            and game.name not in exclude # and isn't excluded
+            # and isn't excluded by priority_only
+            and (not priority_only or game.name in priority)
+            # and user wants unlinked games or the game is linked
+            and (unlinked_campaigns or campaign.linked)
+            # and can be progressed within the next hour
+            and campaign.can_earn_within_next_hour()
+        ):
+            return True
+        return False
+
+
     async def fetch_inventory(self) -> None:
         status_update = self.gui.status.update
         status_update(_("gui", "status", "fetching_inventory"))
@@ -1690,13 +1687,12 @@ class Twitch:
         self.gui.inv.clear()
         self.inventory.clear()
         switch_triggers: set[datetime] = set()
-        next_hour = datetime.now(timezone.utc) + timedelta(hours=1)
         for i, campaign in enumerate(campaigns, start=1):
             status_update(
                 _("gui", "status", "adding_campaigns").format(counter=f"({i}/{len(campaigns)})")
             )
             self._drops.update({drop.id: drop for drop in campaign.drops})
-            if campaign.can_earn_within(next_hour):
+            if campaign.can_earn_within_next_hour():
                 switch_triggers.update(campaign.time_triggers)
             # NOTE: this fetches pictures from the CDN, so might be slow without a cache
             await self.gui.inv.add_campaign(campaign)
