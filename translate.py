@@ -361,12 +361,13 @@ default_translation: Translation = {
         "settings": {
             "general": {
                 "name": "General",
+                "dark_theme": "Dark theme: ",
                 "autostart": "Autostart: ",
                 "tray": "Autostart into tray: ",
                 "tray_notifications": "Tray notifications: ",
                 "priority_only": "Priority Only: ",
-                "priority_by_ending_soonest": "Prioritize by end soonest: ",
                 "unlinked_campaigns": "Allow Unlinked Campaigns: ",
+                "priority_by_ending_soonest": "Prioritize by end soonest: ",
                 "proxy": "Proxy (requires restart):",
             },
             "game_name": "Game name",

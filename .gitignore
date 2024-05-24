@@ -17,7 +17,7 @@ log.txt
 /lock.file
 settings.json
 healthcheck.timestamp
-/lang/English.json
+#/lang/English.json
 # AppImage
 /AppDir
 /appimage-builder
