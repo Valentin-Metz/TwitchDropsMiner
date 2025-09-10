@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime
 # import an additional thing for proper PyInstaller freeze support
 from multiprocessing import freeze_support
 
 
 if __name__ == "__main__":
+    print(f"{datetime.now().strftime('%Y-%m-%d %X')}: Starting: Twitch Drops Miner")
     freeze_support()
     import io
     import sys
@@ -117,12 +119,12 @@ if __name__ == "__main__":
     # load settings
     try:
         settings = Settings(args)
-    except Exception:
+    except Exception as e:
         messagebox.showerror(
             "Settings error",
             f"There was an error while loading the settings file:\n\n{traceback.format_exc()}"
         )
-        sys.exit(4)
+        raise e
     # dummy window isn't needed anymore
     root.destroy()
     # get rid of unneeded objects

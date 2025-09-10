@@ -2318,6 +2318,7 @@ class GUIManager:
         self.tray.update_title(None)
 
     def print(self, message: str):
+        print(message)
         # print to our custom output
         self.output.print(message)
 
