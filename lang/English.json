@@ -151,8 +151,8 @@
                 "priority_algorithm": "Priority Algorithm: ",
                 "priority_algorithms": {
                     "list": "Priority List",
-                    "adaptive": "Adaptive Priority",
-                    "balanced": "Balanced Priority",
+                    "adaptive": "Adaptive",
+                    "balanced": "Balanced",
                     "ending_soonest": "Ending Soonest"
                 }
             },

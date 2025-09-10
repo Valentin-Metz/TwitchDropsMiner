@@ -12,6 +12,15 @@ from typing import Any, Dict, Literal, NewType, TYPE_CHECKING
 
 from yarl import URL
 
+# Try to import fake_useragent
+# If not available, the code will fall back to hardcoded user agents
+try:
+    from fake_useragent import UserAgent
+    FAKE_USERAGENT_AVAILABLE = True
+except ImportError:
+    UserAgent = None
+    FAKE_USERAGENT_AVAILABLE = False
+
 from version import __version__
 
 if TYPE_CHECKING:
@@ -134,14 +143,89 @@ OUTPUT_FORMATTER = logging.Formatter("{levelname}: {message}", style='{', datefm
 
 
 class ClientInfo:
-    def __init__(self, client_url: URL, client_id: str, user_agents: str | list[str]) -> None:
+    def __init__(self, client_url: URL, client_id: str, browser_type: str = None) -> None:
         self.CLIENT_URL: URL = client_url
         self.CLIENT_ID: str = client_id
-        self.USER_AGENT: str
-        if isinstance(user_agents, list):
-            self.USER_AGENT = random.choice(user_agents)
-        else:
-            self.USER_AGENT = user_agents
+        self.USER_AGENT: str = self._get_user_agent(browser_type)
+
+    def _get_user_agent(self, browser_type: str = None) -> str:
+        """Get a random user agent using fake-useragent or fallback to hardcoded ones"""
+        # If fake-useragent is not available, use simple hardcoded fallback
+        if not FAKE_USERAGENT_AVAILABLE:
+            return self._get_hardcoded_user_agent(browser_type)
+
+        try:
+            ua = UserAgent()
+            if browser_type:
+                browser_type_lower = browser_type.lower()
+
+                # Handle specific client types
+                if browser_type_lower == 'desktop_chrome':
+                    return ua.chrome
+                elif browser_type_lower == 'mobile_chrome':
+                    return ua.chrome
+                elif browser_type_lower == 'android_app':
+                    return ua.random
+                elif browser_type_lower == 'android_tv':
+                    return ua.chrome
+                elif browser_type_lower == 'chrome':
+                    return ua.chrome
+                elif browser_type_lower == 'firefox':
+                    return ua.firefox
+                elif browser_type_lower == 'safari':
+                    return ua.safari
+                elif browser_type_lower == 'edge':
+                    return ua.edge
+                elif browser_type_lower == 'opera':
+                    return ua.opera
+                else:
+                    # For unknown browser types, use random
+                    return ua.random
+            else:
+                return ua.random
+        except Exception:
+            # Fallback to hardcoded user agents if fake-useragent fails
+            return self._get_hardcoded_user_agent(browser_type)
+
+    def _get_hardcoded_user_agent(self, browser_type: str = None) -> str:
+        """Fallback method with hardcoded user agents for backward compatibility"""
+        # Simple fallback - This is only used when fake-useragent is not available
+
+        if browser_type:
+            browser_type_lower = browser_type.lower()
+
+            if browser_type_lower == 'desktop_chrome':
+                # Desktop Chrome user agents (like original WEB client)
+                return (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+                )
+            elif browser_type_lower == 'mobile_chrome':
+                # Mobile Chrome user agents (like original MOBILE_WEB client)
+                mobile_agents = [
+                    "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36",
+                    "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36",
+                    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/140.0.7339.101 Mobile/15E148 Safari/604.1",
+                ]
+                return random.choice(mobile_agents)
+            elif browser_type_lower == 'android_app':
+                # Android app user agents (like original ANDROID_APP client)
+                return (
+                    "Dalvik/2.1.0 (Linux; U; Android 7.1.2; SM-G977N Build/LMY48Z) "
+                    "tv.twitch.android.app/16.8.1/1608010"
+                )
+            elif browser_type_lower == 'android_tv':
+                # Android TV user agents (like original SMARTBOX client)
+                return (
+                    "Mozilla/5.0 (Linux; Android 7.1; Smart Box C1) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+                )
+
+        # Default fallback
+        return (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+        )
 
     def __iter__(self):
         return iter((self.CLIENT_URL, self.CLIENT_ID, self.USER_AGENT))
@@ -151,60 +235,22 @@ class ClientType:
     WEB = ClientInfo(
         URL("https://www.twitch.tv"),
         "kimne78kx3ncx6brgo4mv6wki5h1ko",
-        (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-        ),
+        "desktop_chrome"
     )
     MOBILE_WEB = ClientInfo(
         URL("https://m.twitch.tv"),
         "r8s4dac0uhzifbpu9sjdiwzctle17ff",
-        [
-            (
-                "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/119.0.6045.66 Mobile Safari/537.36"
-            ),
-            (
-                "Mozilla/5.0 (Linux; Android 13; SM-A205U) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/119.0.6045.66 Mobile Safari/537.36"
-            ),
-            (
-                "Mozilla/5.0 (Linux; Android 13; SM-A102U) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/119.0.6045.66 Mobile Safari/537.36"
-            ),
-            (
-                "Mozilla/5.0 (Linux; Android 13; SM-G960U) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/119.0.6045.66 Mobile Safari/537.36"
-            ),
-            (
-                "Mozilla/5.0 (Linux; Android 13; SM-N960U) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/119.0.6045.66 Mobile Safari/537.36"
-            ),
-            (
-                "Mozilla/5.0 (Linux; Android 13; LM-Q720) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/119.0.6045.66 Mobile Safari/537.36"
-            ),
-            (
-                "Mozilla/5.0 (Linux; Android 13; LM-X420) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/119.0.6045.66 Mobile Safari/537.36"
-            ),
-        ]
+        "mobile_chrome"
     )
     ANDROID_APP = ClientInfo(
         URL("https://www.twitch.tv"),
         "kd1unb4b3q4t58fwlpcbzcbnm76a8fp",
-        (
-            "Dalvik/2.1.0 (Linux; U; Android 7.1.2; SM-G977N Build/LMY48Z) "
-            "tv.twitch.android.app/16.8.1/1608010"
-        ),
+        "android_app"
     )
     SMARTBOX = ClientInfo(
         URL("https://android.tv.twitch.tv"),
         "ue6666qo983tsx6so1t0vnawi233wa",
-        (
-            "Mozilla/5.0 (Linux; Android 7.1; Smart Box C1) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-        ),
+        "android_tv"
     )
 
 
