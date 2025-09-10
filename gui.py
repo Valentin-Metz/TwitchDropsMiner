@@ -1550,6 +1550,7 @@ class _SettingsVars(TypedDict):
     language: StringVar
     priority_mode: StringVar
     tray_notifications: IntVar
+    unlinked_campaigns: IntVar
 
 
 class SettingsPanel:
@@ -1562,10 +1563,12 @@ class SettingsPanel:
         # to allow changing the language before the settings panel is initialized.
         return {
             PriorityMode.PRIORITY_ONLY: _("gui", "settings", "priority_modes", "priority_only"),
-            PriorityMode.ENDING_SOONEST: _("gui", "settings", "priority_modes", "ending_soonest"),
+            PriorityMode.BALANCED: _("gui", "settings", "priority_modes", "balanced"),
+            PriorityMode.ADAPTIVE: _("gui", "settings", "priority_modes", "adaptive"),
             PriorityMode.LOW_AVBL_FIRST: _(
                 "gui", "settings", "priority_modes", "low_availability"
             ),
+            PriorityMode.ENDING_SOONEST: _("gui", "settings", "priority_modes", "ending_soonest"),
         }
 
     def __init__(self, manager: GUIManager, master: ttk.Widget):
@@ -1583,6 +1586,7 @@ class SettingsPanel:
             "dark_mode": IntVar(master, int(self._settings.dark_mode)),
             "priority_mode": StringVar(master, self.PRIORITY_MODES[priority_mode]),
             "tray_notifications": IntVar(master, self._settings.tray_notifications),
+            "unlinked_campaigns": IntVar(master, self._settings.unlinked_campaigns),
         }
         self._game_names: set[str] = set()
         master.rowconfigure(0, weight=1)
@@ -1643,6 +1647,14 @@ class SettingsPanel:
             checkboxes_frame,
             variable=self._vars["dark_mode"],
             command=self.update_dark_mode,
+        ).grid(column=1, row=irow, sticky="w")
+        ttk.Label(
+            checkboxes_frame, text=_("gui", "settings", "general", "unlinked_campaigns")
+        ).grid(column=0, row=(irow := irow + 1), sticky="e")
+        ttk.Checkbutton(
+            checkboxes_frame,
+            variable=self._vars["unlinked_campaigns"],
+            command=self.unlinked_campaigns,
         ).grid(column=1, row=irow, sticky="w")
         ttk.Label(
             checkboxes_frame, text=_("gui", "settings", "general", "priority_mode")
@@ -1916,6 +1928,9 @@ class SettingsPanel:
             if mode_name == name:
                 self._settings.priority_mode = value
                 break
+
+    def unlinked_campaigns(self) -> None:
+        self._settings.unlinked_campaigns = bool(self._vars["unlinked_campaigns"].get())
 
     def exclude_add(self) -> None:
         game_name: str = self._exclude_entry.get()
