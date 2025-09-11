@@ -568,7 +568,8 @@ class Twitch:
         priority: list[str],
         exclude: set[str],
         priority_only: bool,
-        next_hour: datetime
+        next_hour: datetime,
+        unlinked_campaigns: bool = False
     ) -> dict[Game, int]:
         """
         Calculate priority indices for all campaigns based on the selected priority mode.
@@ -585,11 +586,23 @@ class Twitch:
             game = campaign.game
 
             # Skip excluded games or campaigns that can't be progressed
-            if (
-                game.name in exclude
-                or not campaign.can_earn_within(next_hour)
-                or (priority_only and game.name not in priority)
-            ):
+            if game.name in exclude:
+                continue
+
+            # Check if campaign can be earned within next hour
+            if unlinked_campaigns:
+                # For unlinked campaigns, use a more permissive check
+                can_earn = (
+                    campaign._valid
+                    and campaign.ends_at > datetime.now(timezone.utc)
+                    and campaign.starts_at < next_hour
+                    and any(drop.can_earn_within(next_hour) for drop in campaign.drops)
+                )
+            else:
+                # For linked campaigns, use the standard eligibility check
+                can_earn = campaign.can_earn_within(next_hour)
+
+            if not can_earn or (priority_only and game.name not in priority):
                 continue
 
             game_priority = priority.index(game.name) if game.name in priority else 0
@@ -731,29 +744,19 @@ class Twitch:
                 if unlinked_campaigns:
                     # Include all campaigns (both linked and unlinked)
                     filtered_campaigns = self.inventory
-                    print(f"UNLINKED CAMPAIGNS ENABLED: Including all {len(filtered_campaigns)} campaigns")
                 else:
                     # Exclude unlinked campaigns (only include campaigns with allowed_channels)
                     filtered_campaigns = [
                         c for c in self.inventory
                         if c.allowed_channels  # Only campaigns with ACL (non-empty list)
                     ]
-                    print(f"UNLINKED CAMPAIGNS DISABLED: Including only {len(filtered_campaigns)} linked campaigns")
 
-                # Debug: Show which campaigns are being processed
-                for campaign in filtered_campaigns:
-                    is_unlinked = not campaign.allowed_channels
-                    print(f"  Campaign: {campaign.game.name} (unlinked: {is_unlinked})")
 
                 # Calculate priority indices for filtered campaigns
                 self.wanted_games = self._calculate_game_priorities(
-                    filtered_campaigns, priority_mode, priority, exclude, priority_only, next_hour
+                    filtered_campaigns, priority_mode, priority, exclude, priority_only, next_hour, unlinked_campaigns
                 )
 
-                # Debug: Show final priority results
-                print(f"FINAL PRIORITY RESULTS:")
-                for game, priority_idx in sorted(self.wanted_games.items(), key=lambda x: x[1]):
-                    print(f"  Priority {priority_idx}: {game.name}")
 
                 full_cleanup = True
                 self.restart_watching()
