@@ -1212,18 +1212,22 @@ class Twitch:
                             # we can't earn this drop in the current watching channel
                             use_active = True
                             drop_text = (
-                                f"{drop.name} ({drop.campaign.game}, "
-                                f"{drop.current_minutes}/{drop.required_minutes})"
+                                f"{drop.campaign.game} | {drop.campaign.name} "
+                                f"({drop.campaign.claimed_drops}/{drop.campaign.total_drops}) | "
+                                f"{drop.name}: {drop.current_minutes}/{drop.required_minutes}"
                             )
                             logger.log(CALL, f"Current drop returned mismach: {drop_text}")
+                            logger.log(logging.INFO, f"Drop progress: {drop_text}")
                         else:
                             drop.update_minutes(drop_data["currentMinutesWatched"])
                             drop.display()
                             drop_text = (
-                                f"{drop.name} ({drop.campaign.game}, "
-                                f"{drop.current_minutes}/{drop.required_minutes})"
+                                f"{drop.campaign.game} | {drop.campaign.name} "
+                                f"({drop.campaign.claimed_drops}/{drop.campaign.total_drops}) | "
+                                f"{drop.name}: {drop.current_minutes}/{drop.required_minutes}"
                             )
                             logger.log(CALL, f"Drop progress from GQL: {drop_text}")
+                            logger.log(logging.INFO, f"Drop progress: {drop_text}")
                     else:
                         use_active = True
                         logger.log(CALL, "Current drop returned as none")
@@ -1239,10 +1243,12 @@ class Twitch:
                             drop.bump_minutes()
                             drop.display()
                             drop_text = (
-                                f"{drop.name} ({drop.campaign.game}, "
-                                f"{drop.current_minutes}/{drop.required_minutes})"
+                                f"{drop.campaign.game} | {drop.campaign.name} "
+                                f"({drop.campaign.claimed_drops}/{drop.campaign.total_drops}) | "
+                                f"{drop.name}: {drop.current_minutes}/{drop.required_minutes}"
                             )
                             logger.log(CALL, f"Drop progress from active search: {drop_text}")
+                            logger.log(logging.INFO, f"Drop progress: {drop_text}")
                     else:
                         logger.log(CALL, "No active drop could be determined")
             await self._watch_sleep(last_watch + interval - time())
@@ -1509,13 +1515,14 @@ class Twitch:
         assert msg_type == "drop-progress"
         if drop is not None:
             drop_text = (
-                f"{drop.name} ({drop.campaign.game}, "
-                f"{message['data']['current_progress_min']}/"
-                f"{message['data']['required_progress_min']})"
+                f"{drop.campaign.game} | {drop.campaign.name} "
+                f"({drop.campaign.claimed_drops}/{drop.campaign.total_drops}) | "
+                f"{drop.name}: {drop.current_minutes}/{drop.required_minutes}"
             )
         else:
             drop_text = "<Unknown>"
         logger.log(CALL, f"Drop update from websocket: {drop_text}")
+        logger.log(logging.INFO, f"Drop progress: {drop_text}")
         if self._drop_update is None:
             # we aren't actually waiting for a progress update right now, so we can just
             # ignore the event this time
