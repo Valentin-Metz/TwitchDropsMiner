@@ -1171,7 +1171,10 @@ class Twitch:
         while True:
             channel: Channel = await self.watching_channel.get()
             succeeded, repeat_now = await channel.send_watch()
-            logger.log(CALL,f"returned watch, succeeded: {succeeded}, repeat_new: {repeat_now}")
+            logger.log(CALL, f"returned watch, succeeded: {succeeded}, repeat_new: {repeat_now}")
+            if succeeded:
+                with open('healthcheck.timestamp', 'w') as f:
+                    f.write(str(int(time())))
             if not succeeded:
                 # this usually means the campaign expired in the middle of mining
                 # or the m3u8 playlists all returned a 500 Internal server error

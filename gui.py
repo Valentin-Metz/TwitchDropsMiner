@@ -695,8 +695,6 @@ class CampaignProgress:
             required_minutes=self._drop.required_minutes,
             campaign=self._drop.campaign
         ))
-        with open('healthcheck.timestamp', 'w') as f:
-            f.write(str(int(time())))
         if self._timer_task is None:
             if self._drop is None or self._drop.remaining_minutes <= 0:
                 # if we're starting the timer at 0 drop minutes,
