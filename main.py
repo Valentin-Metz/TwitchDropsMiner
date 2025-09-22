@@ -6,6 +6,7 @@ from multiprocessing import freeze_support
 
 
 if __name__ == "__main__":
+    from datetime import datetime
     print(f"{datetime.now().strftime('%Y-%m-%d %X')}: Starting: Twitch Drops Miner")
     freeze_support()
     import io

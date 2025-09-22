@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import asyncio
 import logging
 from time import time
@@ -53,6 +54,7 @@ from constants import (
     PriorityMode,
     WebsocketTopic,
 )
+from priority_algorithms import Calculate_Balanced_Priority, Calculate_Adaptive_Priority
 
 if TYPE_CHECKING:
     from utils import Game
@@ -426,7 +428,7 @@ class Twitch:
         # State management
         self._state: State = State.IDLE
         self._state_change = asyncio.Event()
-        self.wanted_games: list[Game] = []
+        self.wanted_games: dict[Game, int] = {}
         self.inventory: list[DropsCampaign] = []
         self._drops: dict[str, TimedDrop] = {}
         self._campaigns: dict[str, DropsCampaign] = {}
@@ -512,6 +514,7 @@ class Twitch:
         self.inventory.clear()
         self._auth_state.clear()
         self.wanted_games.clear()
+        self._sorted_games.clear()
         self._mnt_triggers.clear()
         # wait at least half a second + whatever it takes to complete the closing
         # this allows aiohttp to safely close the session
@@ -558,6 +561,86 @@ class Twitch:
         self.gui.save(force=force)
         self.settings.save(force=force)
 
+    def _calculate_game_priorities(
+        self,
+        campaigns: list[DropsCampaign],
+        priority_mode: PriorityMode,
+        priority: list[str],
+        exclude: set[str],
+        priority_only: bool,
+        next_hour: datetime,
+        unlinked_campaigns: bool = False
+    ) -> dict[Game, int]:
+        """
+        Calculate priority indices for all campaigns based on the selected priority mode.
+
+        Returns a dictionary mapping Game objects to their priority indices (0 = highest priority).
+        """
+        wanted_games = {}
+        current_time = datetime.now(timezone.utc)
+
+        # First, collect all eligible games with their scores
+        game_scores = {}
+
+        for i, campaign in enumerate(campaigns):
+            game = campaign.game
+
+            # Skip excluded games or campaigns that can't be progressed
+            if game.name in exclude:
+                continue
+
+            # Check if campaign can be earned within next hour
+            if unlinked_campaigns:
+                # For unlinked campaigns, use a more permissive check
+                can_earn = (
+                    campaign._valid
+                    and campaign.ends_at > datetime.now(timezone.utc)
+                    and campaign.starts_at < next_hour
+                    and any(drop.can_earn_within(next_hour) for drop in campaign.drops)
+                )
+            else:
+                # For linked campaigns, use the standard eligibility check
+                can_earn = campaign.can_earn_within(next_hour)
+
+            if not can_earn or (priority_only and game.name not in priority):
+                continue
+
+            game_priority = priority.index(game.name) if game.name in priority else 0
+
+            # Calculate score based on priority mode
+            if priority_mode is PriorityMode.ENDING_SOONEST:
+                score = -campaign.ends_at.timestamp()  # Earlier end times = higher priority
+            elif priority_mode is PriorityMode.LOW_AVBL_FIRST:
+                score = -campaign.availability  # Lower availability = higher priority
+            elif priority_mode is PriorityMode.BALANCED:
+                if game_priority:
+                    score = Calculate_Balanced_Priority(campaign, game_priority, len(priority))
+                else:
+                    # Non-priority games: use time-based sorting
+                    time_remaining = (campaign.ends_at - current_time).total_seconds() / 3600
+                    score = -time_remaining
+            elif priority_mode is PriorityMode.ADAPTIVE:
+                if game_priority:
+                    score = Calculate_Adaptive_Priority(campaign, game_priority, len(priority))
+                else:
+                    # Non-priority games: use time-based sorting
+                    time_remaining = (campaign.ends_at - current_time).total_seconds() / 3600
+                    score = -time_remaining
+            else:  # PRIORITY_ONLY
+                if game_priority:
+                    score = -game_priority  # Lower index = higher priority (0 = highest)
+                else:
+                    score = -i  # Non-priority games get negative index
+
+            game_scores[game] = score
+
+        # Sort games by score (highest first) and assign priority indices
+        sorted_games = sorted(game_scores.keys(), key=lambda g: game_scores[g], reverse=True)
+        for priority_index, game in enumerate(sorted_games):
+            wanted_games[game] = priority_index
+
+        return wanted_games
+
     def get_priority(self, channel: Channel) -> int:
         """
         Return a priority number for a given channel.
@@ -571,7 +654,8 @@ class Twitch:
             or game not in self.wanted_games  # we don't care about the played game
         ):
             return MAX_INT
-        return self.wanted_games.index(game)
+
+        return self.wanted_games[game]
 
     @staticmethod
     def _viewers_key(channel: Channel) -> int:
@@ -653,31 +737,27 @@ class Twitch:
                 priority = self.settings.priority
                 priority_mode = self.settings.priority_mode
                 priority_only = priority_mode is PriorityMode.PRIORITY_ONLY
+                unlinked_campaigns = self.settings.unlinked_campaigns
                 next_hour = datetime.now(timezone.utc) + timedelta(hours=1)
-                # sorted_campaigns: list[DropsCampaign] = list(self.inventory)
-                sorted_campaigns: list[DropsCampaign] = self.inventory
-                if not priority_only:
-                    if priority_mode is PriorityMode.ENDING_SOONEST:
-                        sorted_campaigns.sort(key=lambda c: c.ends_at)
-                    elif priority_mode is PriorityMode.LOW_AVBL_FIRST:
-                        sorted_campaigns.sort(key=lambda c: c.availability)
-                sorted_campaigns.sort(
-                    key=lambda c: (
-                        priority.index(c.game.name) if c.game.name in priority else MAX_INT
-                    )
+
+                # Filter campaigns based on unlinked_campaigns setting
+                if unlinked_campaigns:
+                    # Include all campaigns (both linked and unlinked)
+                    filtered_campaigns = self.inventory
+                else:
+                    # Exclude unlinked campaigns (only include campaigns with allowed_channels)
+                    filtered_campaigns = [
+                        c for c in self.inventory
+                        if c.allowed_channels  # Only campaigns with ACL (non-empty list)
+                    ]
+
+
+                # Calculate priority indices for filtered campaigns
+                self.wanted_games = self._calculate_game_priorities(
+                    filtered_campaigns, priority_mode, priority, exclude, priority_only, next_hour, unlinked_campaigns
                 )
-                for campaign in sorted_campaigns:
-                    game: Game = campaign.game
-                    if (
-                        game not in self.wanted_games  # isn't already there
-                        # and isn't excluded by list or priority mode
-                        and game.name not in exclude
-                        and (not priority_only or game.name in priority)
-                        # and can be progressed within the next hour
-                        and campaign.can_earn_within(next_hour)
-                    ):
-                        # non-excluded games with no priority are placed last, below priority ones
-                        self.wanted_games.append(game)
+
+
                 full_cleanup = True
                 self.restart_watching()
                 self.change_state(State.CHANNELS_CLEANUP)

@@ -262,6 +262,8 @@ class PriorityMode(Enum):
     PRIORITY_ONLY = 0
     ENDING_SOONEST = 1
     LOW_AVBL_FIRST = 2
+    BALANCED = 3  # 60% priority + 40% time
+    ADAPTIVE = 4  # Priority with safety override
 
 
 class GQLOperation(JsonType):
