@@ -720,6 +720,8 @@ class Twitch:
                 else:
                     # with no games available, we switch to IDLE after cleanup
                     self.print(_("status", "no_campaign"))
+                    with open('healthcheck.timestamp', 'w') as f:
+                        f.write(str(int(time())))
                     self.change_state(State.IDLE)
             elif self._state is State.CHANNELS_FETCH:
                 self.gui.status.update(_("gui", "status", "gathering"))
@@ -864,6 +866,8 @@ class Twitch:
                 else:
                     # not watching anything and there isn't anything to watch either
                     self.print(_("status", "no_channel"))
+                    with open('healthcheck.timestamp', 'w') as f:
+                        f.write(str(int(time())))
                     self.change_state(State.IDLE)
                 del new_watching, selected_channel, watching_channel
             elif self._state is State.EXIT:
@@ -891,6 +895,9 @@ class Twitch:
             # logger.log(CALL, f"Sending watch payload to: {channel.name}")
             succeeded: bool = await channel.send_watch()
             last_sent: float = time()
+            if succeeded:
+                with open('healthcheck.timestamp', 'w') as f:
+                    f.write(str(int(time())))
             if not succeeded:
                 logger.log(CALL, f"Watch requested failed for channel: {channel.name}")
             # wait ~20 seconds for a progress update
