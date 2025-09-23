@@ -722,8 +722,9 @@ class Twitch:
                     # with no games available, we switch to IDLE after cleanup
                     self.print(_("status", "no_campaign"))
                     with open('healthcheck.timestamp', 'w') as f:
-                        logger.log(DEBUG, "Updating health check")
-                        f.write(str(int(time())))
+                        current_timestamp = int(time())
+                        logger.log(DEBUG, f"Updating healthcheck: {current_timestamp}")
+                        f.write(str(current_timestamp))
                     self.change_state(State.IDLE)
             elif self._state is State.CHANNELS_FETCH:
                 self.gui.status.update(_("gui", "status", "gathering"))
@@ -869,8 +870,9 @@ class Twitch:
                     # not watching anything and there isn't anything to watch either
                     self.print(_("status", "no_channel"))
                     with open('healthcheck.timestamp', 'w') as f:
-                        logger.log(DEBUG, "Updating health check")
-                        f.write(str(int(time())))
+                        current_timestamp = int(time())
+                        logger.log(DEBUG, f"Updating healthcheck: {current_timestamp}")
+                        f.write(str(current_timestamp))
                     self.change_state(State.IDLE)
                 del new_watching, selected_channel, watching_channel
             elif self._state is State.EXIT:
@@ -900,8 +902,9 @@ class Twitch:
             last_sent: float = time()
             if succeeded:
                 with open('healthcheck.timestamp', 'w') as f:
-                    logger.log(DEBUG, "Updating health check")
-                    f.write(str(int(time())))
+                    current_timestamp = int(time())
+                    logger.log(DEBUG, f"Updating healthcheck: {current_timestamp}")
+                    f.write(str(current_timestamp))
             if not succeeded:
                 logger.log(CALL, f"Watch requested failed for channel: {channel.name}")
             # wait ~20 seconds for a progress update
@@ -1214,8 +1217,9 @@ class Twitch:
         logger.log(CALL, f"Drop update from websocket: {drop_text}")
         logger.log(logging.INFO, f"Drop progress: {drop_text}")
         with open('healthcheck.timestamp', 'w') as f:
-            logger.log(DEBUG, "Updating health check")
-            f.write(str(int(time())))
+            current_timestamp = int(time())
+            logger.log(DEBUG, f"Updating healthcheck: {current_timestamp}")
+            f.write(str(current_timestamp))
 
     @task_wrapper
     async def process_notifications(self, user_id: int, message: JsonType):
