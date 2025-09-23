@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import asyncio
 import logging
+from logging import DEBUG
 from time import time
 from copy import deepcopy
 from itertools import chain
@@ -721,6 +722,7 @@ class Twitch:
                     # with no games available, we switch to IDLE after cleanup
                     self.print(_("status", "no_campaign"))
                     with open('healthcheck.timestamp', 'w') as f:
+                        logger.log(DEBUG, "Updating health check")
                         f.write(str(int(time())))
                     self.change_state(State.IDLE)
             elif self._state is State.CHANNELS_FETCH:
@@ -867,6 +869,7 @@ class Twitch:
                     # not watching anything and there isn't anything to watch either
                     self.print(_("status", "no_channel"))
                     with open('healthcheck.timestamp', 'w') as f:
+                        logger.log(DEBUG, "Updating health check")
                         f.write(str(int(time())))
                     self.change_state(State.IDLE)
                 del new_watching, selected_channel, watching_channel
@@ -897,6 +900,7 @@ class Twitch:
             last_sent: float = time()
             if succeeded:
                 with open('healthcheck.timestamp', 'w') as f:
+                    logger.log(DEBUG, "Updating health check")
                     f.write(str(int(time())))
             if not succeeded:
                 logger.log(CALL, f"Watch requested failed for channel: {channel.name}")
@@ -1209,6 +1213,9 @@ class Twitch:
             drop_text = "<Unknown>"
         logger.log(CALL, f"Drop update from websocket: {drop_text}")
         logger.log(logging.INFO, f"Drop progress: {drop_text}")
+        with open('healthcheck.timestamp', 'w') as f:
+            logger.log(DEBUG, "Updating health check")
+            f.write(str(int(time())))
 
     @task_wrapper
     async def process_notifications(self, user_id: int, message: JsonType):
