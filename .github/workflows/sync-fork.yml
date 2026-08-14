@@ -1,0 +1,91 @@
+name: Sync Fork (Rebase)
+
+on:
+  schedule:
+    - cron: "0 */4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-fork-master
+  cancel-in-progress: false
+
+env:
+  BRANCH: master
+  UPSTREAM_REPOSITORY: DevilXD/TwitchDropsMiner
+
+jobs:
+  sync:
+    name: Rebase master onto upstream
+    if: github.repository == 'Valentin-Metz/TwitchDropsMiner'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout fork history
+        uses: actions/checkout@v7
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Rebase and update fork
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git remote add upstream "https://github.com/${UPSTREAM_REPOSITORY}.git"
+          git fetch --no-tags upstream \
+            "+refs/heads/${BRANCH}:refs/remotes/upstream/${BRANCH}"
+          git fetch --no-tags origin \
+            "+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}"
+
+          fork_ref="refs/remotes/origin/${BRANCH}"
+          upstream_ref="refs/remotes/upstream/${BRANCH}"
+          fork_head="$(git rev-parse "${fork_ref}")"
+          upstream_head="$(git rev-parse "${upstream_ref}")"
+
+          git checkout --force -B "${BRANCH}" "${fork_ref}"
+
+          if git merge-base --is-ancestor "${upstream_ref}" HEAD; then
+            echo "Fork already contains upstream ${upstream_head}."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if ! git rebase "${upstream_ref}"; then
+            conflicts="$(git diff --name-only --diff-filter=U)"
+            git rebase --abort
+
+            {
+              echo "### Fork sync failed"
+              echo
+              echo "Rebasing onto \`${upstream_head}\` produced conflicts. Nothing was pushed."
+              if [[ -n "${conflicts}" ]]; then
+                echo
+                echo '```text'
+                printf '%s\n' "${conflicts}"
+                echo '```'
+              fi
+            } >> "${GITHUB_STEP_SUMMARY}"
+
+            echo "::error::Could not rebase ${BRANCH} onto ${UPSTREAM_REPOSITORY}:${BRANCH}; nothing was pushed."
+            exit 1
+          fi
+
+          rebased_head="$(git rev-parse HEAD)"
+          git merge-base --is-ancestor "${upstream_ref}" HEAD
+          git push \
+            --force-with-lease="refs/heads/${BRANCH}:${fork_head}" \
+            origin "HEAD:refs/heads/${BRANCH}"
+
+          {
+            echo "### Fork synchronized"
+            echo
+            echo "- Previous fork head: \`${fork_head}\`"
+            echo "- Upstream head: \`${upstream_head}\`"
+            echo "- Rebased fork head: \`${rebased_head}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
