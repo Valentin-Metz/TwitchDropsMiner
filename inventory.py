@@ -169,15 +169,14 @@ class BaseDrop:
         if result:
             self.is_claimed = result
             claim_text = (
-                f"{self.campaign.game.name}\n"
-                f"{self.rewards_text()} "
-                f"({self.campaign.claimed_drops}/{self.campaign.total_drops})"
+                f"{self.campaign.game.name} | {self.campaign.name} "
+                f"({self.campaign.claimed_drops}/{self.campaign.total_drops}) | "
+                f"{self.rewards_text()}"
             )
-            # two different claim texts, becase a new line after the game name
-            # looks ugly in the output window - replace it with a space
             self._twitch.print(
-                _("status", "claimed_drop").format(drop=claim_text.replace('\n', ' '))
+                _("status", "claimed_drop").format(drop=claim_text)
             )
+            logger.info(f"Claimed drop: {claim_text}")
             self._twitch.gui.tray.notify(claim_text, _("gui", "tray", "notification_title"))
         else:
             logger.error(f"Drop claim has potentially failed! Drop ID: {self.id}")
