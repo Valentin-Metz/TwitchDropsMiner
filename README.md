@@ -13,6 +13,8 @@ The login and settings screens still need a real display. Run the desktop applic
 3. Close the application normally. A successful login writes `cookies.jar`; a clean shutdown writes `settings.json`.
 4. Copy both files to a dedicated directory on the Docker host. They are beside the executable or `main.py`; a macOS app stores them under `Twitch Drops Miner (by DevilXD).app/Contents/MacOS`.
 
+This fork enables **Allow mining unlinked campaigns** and selects **Ending soonest** as the default priority mode. Games in the priority list remain first; every other eligible linked or unlinked campaign follows in campaign-end order. Add unwanted games to **Exclude**. Choosing **Priority list only** instead makes the list a strict allowlist: every unlisted campaign is skipped regardless of connection status. Existing values in `settings.json` are preserved, so select **Ending soonest** explicitly when reusing an older file or one created by an upstream desktop build. The unlinked-campaign checkbox is fork-only and appears under **Settings > General** when running this checkout from source.
+
 On the Docker host, enter that directory and confirm that both paths are regular files:
 
 ```bash

@@ -1340,7 +1340,10 @@ class InventoryOverview:
             and (
                 excluded or (
                     campaign.game.name not in self._settings.exclude
-                    and not priority_only or campaign.game.name in self._settings.priority
+                    and (
+                        not priority_only
+                        or campaign.game.name in self._settings.priority
+                    )
                 )
             )
             and (finished or not campaign.finished)
@@ -1425,7 +1428,9 @@ class InventoryOverview:
             takefocus=False,
         ).grid(column=1, row=2, sticky="w", padx=4)
         # Linking status
-        if campaign.eligible:
+        if campaign.linked or (
+            campaign.has_badge_or_emote and self._settings.enable_badges_emotes
+        ):
             link_kwargs = {
                 "style": '',
                 "text": _("gui", "inventory", "status", "linked"),
@@ -1566,6 +1571,7 @@ class _SettingsVars(TypedDict):
     priority_mode: StringVar
     tray_notifications: IntVar
     enable_badges_emotes: IntVar
+    unlinked_campaigns: IntVar
     available_drops_check: IntVar
 
 
@@ -1590,7 +1596,7 @@ class SettingsPanel:
         self._settings: Settings = manager._twitch.settings
         priority_mode = self._settings.priority_mode
         if priority_mode not in self.PRIORITY_MODES:
-            priority_mode = PriorityMode.PRIORITY_ONLY
+            priority_mode = PriorityMode.ENDING_SOONEST
             self._settings.priority_mode = priority_mode
         self._vars: _SettingsVars = {
             "autostart": IntVar(master, 0),
@@ -1600,6 +1606,9 @@ class SettingsPanel:
             "dark_mode": IntVar(master, int(self._settings.dark_mode)),
             "priority_mode": StringVar(master, self.PRIORITY_MODES[priority_mode]),
             "tray_notifications": IntVar(master, self._settings.tray_notifications),
+            "unlinked_campaigns": IntVar(
+                master, int(self._settings.unlinked_campaigns)
+            ),
             "enable_badges_emotes": IntVar(
                 master, int(self._settings.enable_badges_emotes)
             ),
@@ -1673,6 +1682,19 @@ class SettingsPanel:
             checkboxes_frame,
             variable=self._vars["dark_mode"],
             command=self.update_dark_mode,
+        ).grid(column=1, row=irow, sticky="w")
+        ttk.Label(
+            checkboxes_frame,
+            text=_("gui", "settings", "general", "unlinked_campaigns"),
+        ).grid(column=0, row=(irow := irow + 1), sticky="e")
+        ttk.Checkbutton(
+            checkboxes_frame,
+            variable=self._vars["unlinked_campaigns"],
+            command=lambda: setattr(
+                self._settings,
+                "unlinked_campaigns",
+                bool(self._vars["unlinked_campaigns"].get()),
+            ),
         ).grid(column=1, row=irow, sticky="w")
         ttk.Label(
             checkboxes_frame, text=_("gui", "settings", "general", "priority_mode")
@@ -2795,6 +2817,8 @@ if __name__ == "__main__":
                 active=False,
                 upcoming=True,
                 eligible=False,
+                linked=False,
+                has_badge_or_emote=False,
                 finished=False,
                 link_url="https://google.com",
                 image_url=campaign_image_url,
@@ -2841,9 +2865,10 @@ if __name__ == "__main__":
                 exclude={"Lit Game"},
                 tray_notifications=True,
                 enable_badges_emotes=False,
+                unlinked_campaigns=True,
                 available_drops_check=False,
                 logging_level=LOGGING_LEVELS[0],
-                priority_mode=PriorityMode.PRIORITY_ONLY,
+                priority_mode=PriorityMode.ENDING_SOONEST,
             )
         )
         mock.change_state = lambda state: mock.gui.print(f"State change: {state.value}")
