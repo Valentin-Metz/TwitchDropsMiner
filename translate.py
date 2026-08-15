@@ -162,6 +162,7 @@ class GUISettingsGeneral(TypedDict):
     tray: str
     tray_notifications: str
     dark_mode: str
+    unlinked_campaigns: str
     priority_mode: str
     proxy: str
 
@@ -378,6 +379,7 @@ default_translation: Translation = {
                 "tray": "Autostart into tray: ",
                 "tray_notifications": "Tray notifications: ",
                 "dark_mode": "Dark mode: ",
+                "unlinked_campaigns": "Allow mining unlinked campaigns: ",
                 "priority_mode": "Priority mode: ",
                 "proxy": "Proxy (requires restart):",
             },

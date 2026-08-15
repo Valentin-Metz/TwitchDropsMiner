@@ -569,6 +569,35 @@ class Twitch:
         self.gui.save(force=force)
         self.settings.save(force=force)
 
+    def _get_wanted_games(self, next_hour: datetime) -> list[Game]:
+        """Return mineable games in the order configured by the user."""
+        exclude = self.settings.exclude
+        priority = self.settings.priority
+        priority_mode = self.settings.priority_mode
+        priority_only = priority_mode is PriorityMode.PRIORITY_ONLY
+        sorted_campaigns = list(self.inventory)
+        if priority_mode is PriorityMode.ENDING_SOONEST:
+            sorted_campaigns.sort(key=lambda campaign: campaign.ends_at)
+        elif priority_mode is PriorityMode.LOW_AVBL_FIRST:
+            sorted_campaigns.sort(key=lambda campaign: campaign.availability)
+        sorted_campaigns.sort(
+            key=lambda campaign: (
+                priority.index(campaign.game.name)
+                if campaign.game.name in priority else MAX_INT
+            )
+        )
+        wanted_games: list[Game] = []
+        for campaign in sorted_campaigns:
+            game = campaign.game
+            if (
+                game not in wanted_games
+                and game.name not in exclude
+                and (not priority_only or game.name in priority)
+                and campaign.can_earn_within(next_hour)
+            ):
+                wanted_games.append(game)
+        return wanted_games
+
     def get_priority(self, channel: Channel) -> int:
         """
         Return a priority number for a given channel.
@@ -659,36 +688,8 @@ class Twitch:
                             if drop.can_claim:
                                 await drop.claim()
                 # figure out which games we want
-                self.wanted_games.clear()
-                exclude = self.settings.exclude
-                priority = self.settings.priority
-                priority_mode = self.settings.priority_mode
-                priority_only = priority_mode is PriorityMode.PRIORITY_ONLY
                 next_hour = datetime.now(timezone.utc) + timedelta(hours=1)
-                # sorted_campaigns: list[DropsCampaign] = list(self.inventory)
-                sorted_campaigns: list[DropsCampaign] = self.inventory
-                if not priority_only:
-                    if priority_mode is PriorityMode.ENDING_SOONEST:
-                        sorted_campaigns.sort(key=lambda c: c.ends_at)
-                    elif priority_mode is PriorityMode.LOW_AVBL_FIRST:
-                        sorted_campaigns.sort(key=lambda c: c.availability)
-                sorted_campaigns.sort(
-                    key=lambda c: (
-                        priority.index(c.game.name) if c.game.name in priority else MAX_INT
-                    )
-                )
-                for campaign in sorted_campaigns:
-                    game: Game = campaign.game
-                    if (
-                        game not in self.wanted_games  # isn't already there
-                        # and isn't excluded by list or priority mode
-                        and game.name not in exclude
-                        and (not priority_only or game.name in priority)
-                        # and can be progressed within the next hour
-                        and campaign.can_earn_within(next_hour)
-                    ):
-                        # non-excluded games with no priority are placed last, below priority ones
-                        self.wanted_games.append(game)
+                self.wanted_games[:] = self._get_wanted_games(next_hour)
                 full_cleanup = True
                 self.restart_watching()
                 self.change_state(State.CHANNELS_CLEANUP)

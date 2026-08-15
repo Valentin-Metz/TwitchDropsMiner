@@ -21,6 +21,7 @@ class SettingsFile(TypedDict):
     connection_quality: int
     tray_notifications: bool
     enable_badges_emotes: bool
+    unlinked_campaigns: bool
     available_drops_check: bool
     priority_mode: PriorityMode
 
@@ -35,8 +36,9 @@ default_settings: SettingsFile = {
     "language": DEFAULT_LANG,
     "tray_notifications": True,
     "enable_badges_emotes": False,
+    "unlinked_campaigns": True,
     "available_drops_check": False,
-    "priority_mode": PriorityMode.PRIORITY_ONLY,
+    "priority_mode": PriorityMode.ENDING_SOONEST,
 }
 
 
@@ -59,6 +61,7 @@ class Settings:
     connection_quality: int
     tray_notifications: bool
     enable_badges_emotes: bool
+    unlinked_campaigns: bool
     available_drops_check: bool
     priority_mode: PriorityMode
 
