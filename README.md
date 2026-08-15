@@ -1,5 +1,83 @@
 # Twitch Drops Miner
 
+## Run this fork in Docker
+
+This fork packages the GUI application with Xvfb so it can run without a physical display. It also sends status and drop progress to standard output, exposes a heartbeat-based Docker health check, and publishes a rolling `master` image for Linux AMD64 and ARM64 in the [fork's public GHCR package](https://github.com/Valentin-Metz/TwitchDropsMiner/pkgs/container/twitchdropsminer).
+
+The login and settings screens still need a real display. Run the desktop application once outside Docker to create the two files used by the container.
+
+### 1. Create `cookies.jar` and `settings.json`
+
+1. On a computer with a desktop, either [download the latest upstream release](https://github.com/DevilXD/TwitchDropsMiner/releases) or run this checkout from source.
+2. Start the application outside Docker, log in to Twitch, choose the games and settings you want, and press **Reload** once to confirm that mining starts.
+3. Close the application normally. A successful login writes `cookies.jar`; a clean shutdown writes `settings.json`.
+4. Copy both files to a dedicated directory on the Docker host. They are beside the executable or `main.py`; a macOS app stores them under `Twitch Drops Miner (by DevilXD).app/Contents/MacOS`.
+
+On the Docker host, enter that directory and confirm that both paths are regular files:
+
+```bash
+cd /path/to/twitch-drops-miner
+test -f cookies.jar && test -f settings.json
+chmod 600 cookies.jar settings.json
+```
+
+Do not replace either file with an empty file. With Docker's `-v` syntax, a missing host path is created as a directory, which the miner cannot use as a file. See Docker's [bind-mount documentation](https://docs.docker.com/engine/storage/bind-mounts/). Treat `cookies.jar` as a password because it contains the saved Twitch session.
+
+### 2. Start the miner
+
+Run this command from the directory containing `cookies.jar` and `settings.json`:
+
+```bash
+docker run -itd --init --pull=always --restart=always --network=host -v ./cookies.jar:/TwitchDropsMiner/cookies.jar -v ./settings.json:/TwitchDropsMiner/settings.json:ro --name twitch_drops_miner ghcr.io/valentin-metz/twitchdropsminer:master
+```
+
+The cookie file is mounted read-write so the miner can refresh the session. The settings file is mounted read-only, making the desktop-generated configuration the source of truth. To change settings later, stop the container, update `settings.json` with the desktop application, then start the container again.
+
+`--pull=always` fetches the current image when `docker run` creates the container. The image's command exits at the next clock-hour boundary, so keep `--restart=always` to start the next mining cycle and to recover after a process failure or Docker daemon restart.
+
+> [!IMPORTANT]
+> The application and its filesystem run in a container, but networking is not isolated: `--network=host` shares the host's network namespace. Host networking works on Docker Engine for Linux; Docker Desktop 4.34 or later requires it to be enabled in **Settings > Resources > Network**. See Docker's [host-network documentation](https://docs.docker.com/engine/network/drivers/host/).
+
+> [!TIP]
+> On an SELinux-enforcing host, add a private relabel option to both mounts if Docker reports a permission error: use `cookies.jar:/TwitchDropsMiner/cookies.jar:Z` and `settings.json:/TwitchDropsMiner/settings.json:ro,Z`.
+
+### 3. Check the container
+
+Follow the timestamped miner output and inspect the health status with:
+
+```bash
+docker logs -f twitch_drops_miner
+docker inspect --format '{{.State.Health.Status}}' twitch_drops_miner
+```
+
+An initial `starting` status is normal while the health check is inside its five-minute startup grace period. The health check reports a stale heartbeat as `unhealthy`; Docker does not restart a container solely because it is unhealthy. The restart policy applies when the container process exits.
+
+### 4. Configure automatic updates with Watchtower
+
+`--pull=always` does not update an existing container. To follow new `master` images from the [fork package](https://github.com/Valentin-Metz/TwitchDropsMiner/pkgs/container/twitchdropsminer), run [NickFedor Watchtower](https://watchtower.nickfedor.com/latest/configuration/introduction/) alongside the miner:
+
+```bash
+docker run -d \
+  --name watchtower \
+  --restart unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  nickfedor/watchtower:latest \
+  --interval 3600 \
+  --cleanup \
+  --include-restarting \
+  twitch_drops_miner
+```
+
+The positional container name limits Watchtower to `twitch_drops_miner`; it ignores other containers. Every hour, Watchtower checks the rolling tag, pulls a changed image, and recreates the miner with its existing bind mounts, network mode, and restart policy. `--cleanup` removes the old image after an update. `--include-restarting` lets Watchtower update the miner during a restart cycle. See the official documentation for [scheduling](https://watchtower.nickfedor.com/latest/configuration/scheduling/), [update behavior](https://watchtower.nickfedor.com/latest/configuration/update-behavior/), and [container selection](https://watchtower.nickfedor.com/latest/configuration/container-selection/).
+
+> [!WARNING]
+> Mounting `/var/run/docker.sock` gives Watchtower control over the Docker daemon. Treat access to the Watchtower container as privileged host access; see Docker's [daemon attack-surface guidance](https://docs.docker.com/engine/security/#docker-daemon-attack-surface).
+
+> [!NOTE]
+> The rest of this README is inherited from [DevilXD's upstream project](https://github.com/DevilXD/TwitchDropsMiner). Its **Project goals** section says that Docker and remote 24/7 deployment are outside upstream's scope. This fork adds the Xvfb container, stdout diagnostics, a heartbeat health check, GHCR publishing, and a scheduled upstream rebase.
+
+---
+
 This application allows you to AFK mine timed Twitch drops, without having to worry about switching channels when the one you were watching goes offline, claiming the drops, or even receiving the stream data itself. This helps you save on bandwidth and hassle.
 
 ### How It Works:
