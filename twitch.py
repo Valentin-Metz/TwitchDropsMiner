@@ -4,7 +4,6 @@ import json
 import asyncio
 import logging
 import random
-from logging import DEBUG
 from time import time
 from copy import deepcopy
 from itertools import chain
@@ -47,9 +46,11 @@ from constants import (
     MAX_INT,
     DUMP_PATH,
     COOKIES_PATH,
+    HEALTHCHECK_PATH,
     MAX_CHANNELS,
     GQL_QUERIES,
     WATCH_INTERVAL,
+    HEALTHCHECK_INTERVAL,
     CAMPAIGN_PROBE_INTERVAL,
     CAMPAIGN_PROBE_JITTER,
     State,
@@ -466,6 +467,7 @@ class Twitch:
         # Maintenance task
         self._mnt_task: asyncio.Task[None] | None = None
         self._campaign_probe_task: asyncio.Task[None] | None = None
+        self._healthcheck_task: asyncio.Task[None] | None = None
 
     async def get_session(self) -> aiohttp.ClientSession:
         if (session := self._session) is not None:
@@ -514,6 +516,9 @@ class Twitch:
         if self._campaign_probe_task is not None:
             self._campaign_probe_task.cancel()
             self._campaign_probe_task = None
+        if self._healthcheck_task is not None:
+            self._healthcheck_task.cancel()
+            self._healthcheck_task = None
         # stop websocket, close session and save cookies
         await self.websocket.stop(clear_topics=True)
         if self._session is not None:
@@ -667,6 +672,9 @@ class Twitch:
         """
         self.gui.start()
         auth_state = await self.get_auth()
+        if self._healthcheck_task is not None:
+            self._healthcheck_task.cancel()
+        self._healthcheck_task = asyncio.create_task(self._healthcheck_loop())
         await self.websocket.start()
         # NOTE: watch task is explicitly restarted on each new run
         if self._watching_task is not None:
@@ -754,10 +762,6 @@ class Twitch:
                 else:
                     # with no games available, we switch to IDLE after cleanup
                     self.print(_("status", "no_campaign"))
-                    with open('healthcheck.timestamp', 'w') as f:
-                        current_timestamp = int(time())
-                        logger.log(DEBUG, f"Updating healthcheck: {current_timestamp}")
-                        f.write(str(current_timestamp))
                     self.change_state(State.IDLE)
             elif self._state is State.CHANNELS_FETCH:
                 self.gui.status.update(_("gui", "status", "gathering"))
@@ -911,10 +915,6 @@ class Twitch:
                 else:
                     # not watching anything and there isn't anything to watch either
                     self.print(_("status", "no_channel"))
-                    with open('healthcheck.timestamp', 'w') as f:
-                        current_timestamp = int(time())
-                        logger.log(DEBUG, f"Updating healthcheck: {current_timestamp}")
-                        f.write(str(current_timestamp))
                     self.change_state(State.IDLE)
                 del new_watching, selected_channel, watching_channel
             elif self._state is State.RESTART:
@@ -932,6 +932,19 @@ class Twitch:
         with suppress(asyncio.TimeoutError):
             await asyncio.wait_for(self._watching_restart.wait(), timeout=delay)
 
+    @staticmethod
+    def _update_healthcheck() -> None:
+        temporary_path = HEALTHCHECK_PATH.with_name(f"{HEALTHCHECK_PATH.name}.tmp")
+        temporary_path.write_text(str(int(time())), encoding="ascii")
+        temporary_path.replace(HEALTHCHECK_PATH)
+
+    @task_wrapper(critical=True)
+    async def _healthcheck_loop(self) -> NoReturn:
+        interval = HEALTHCHECK_INTERVAL.total_seconds()
+        while True:
+            self._update_healthcheck()
+            await asyncio.sleep(interval)
+
     @task_wrapper(critical=True)
     async def _watch_loop(self) -> NoReturn:
         interval: float = WATCH_INTERVAL.total_seconds()
@@ -944,11 +957,6 @@ class Twitch:
             # logger.log(CALL, f"Sending watch payload to: {channel.name}")
             succeeded: bool = await channel.send_watch()
             last_sent: float = time()
-            if succeeded:
-                with open('healthcheck.timestamp', 'w') as f:
-                    current_timestamp = int(time())
-                    logger.log(DEBUG, f"Updating healthcheck: {current_timestamp}")
-                    f.write(str(current_timestamp))
             if not succeeded:
                 logger.log(CALL, f"Watch requested failed for channel: {channel.name}")
             # wait ~20 seconds for a progress update
@@ -1333,10 +1341,6 @@ class Twitch:
             drop_text = "<Unknown>"
         logger.log(CALL, f"Drop update from websocket: {drop_text}")
         logger.log(logging.INFO, f"Drop progress: {drop_text}")
-        with open('healthcheck.timestamp', 'w') as f:
-            current_timestamp = int(time())
-            logger.log(DEBUG, f"Updating healthcheck: {current_timestamp}")
-            f.write(str(current_timestamp))
 
     @task_wrapper
     async def process_notifications(self, user_id: int, message: JsonType):

@@ -2,7 +2,7 @@
 
 ## Run this fork in Docker
 
-This fork packages the GUI application with Xvfb so it can run without a physical display. It also sends status and drop progress to standard output, exposes a heartbeat-based Docker health check, and publishes a rolling `master` image for Linux AMD64 and ARM64 in the [fork's public GHCR package](https://github.com/Valentin-Metz/TwitchDropsMiner/pkgs/container/twitchdropsminer).
+This fork packages the GUI application with Xvfb so it can run without a physical display. It also sends status and drop progress to standard output, exposes an event-loop heartbeat as a Docker health check, and publishes a rolling `master` image for Linux AMD64 and ARM64 in the [fork's public GHCR package](https://github.com/Valentin-Metz/TwitchDropsMiner/pkgs/container/twitchdropsminer).
 
 The login and settings screens still need a real display. Run the desktop application once outside Docker to create the two files used by the container.
 
@@ -30,7 +30,7 @@ Do not replace either file with an empty file. With Docker's `-v` syntax, a miss
 Run this command from the directory containing `cookies.jar` and `settings.json`:
 
 ```bash
-docker run -itd --init --pull=always --restart=always --network=host -v ./cookies.jar:/TwitchDropsMiner/cookies.jar -v ./settings.json:/TwitchDropsMiner/settings.json:ro --name twitch_drops_miner ghcr.io/valentin-metz/twitchdropsminer:master
+docker run -itd --init --pull=always --restart=always --network=host --label autoheal=true --label autoheal.stop.timeout=30 -v ./cookies.jar:/TwitchDropsMiner/cookies.jar -v ./settings.json:/TwitchDropsMiner/settings.json:ro --name twitch_drops_miner ghcr.io/valentin-metz/twitchdropsminer:master
 ```
 
 The cookie file is mounted read-write so the miner can refresh the session. The settings file is mounted read-only, making the desktop-generated configuration the source of truth. To change settings later, stop the container, update `settings.json` with the desktop application, then start the container again.
@@ -52,9 +52,30 @@ docker logs -f twitch_drops_miner
 docker inspect --format '{{.State.Health.Status}}' twitch_drops_miner
 ```
 
-An initial `starting` status is normal while the health check is inside its five-minute startup grace period. The health check reports a stale heartbeat as `unhealthy`; Docker does not restart a container solely because it is unhealthy. The restart policy applies when the container process exits.
+An initial `starting` status is normal during login and inventory loading. Once initialization succeeds, the event loop replaces the heartbeat every 30 seconds. A heartbeat that is at least 120 seconds old fails the health check; three consecutive failures change the container status to `unhealthy`. Docker records that status but does not restart the container solely because it is unhealthy. The restart policy applies when the container process exits.
 
-### 4. Configure automatic updates with Watchtower
+### 4. Restart unhealthy miners with Autoheal
+
+The miner command above opts in with `--label autoheal=true`. Run [Autoheal](https://github.com/willfarrell/docker-autoheal) to restart only labeled containers that reach Docker's `unhealthy` state:
+
+```bash
+docker run -d \
+  --name autoheal \
+  --restart=always \
+  --network=none \
+  -e AUTOHEAL_CONTAINER_LABEL=autoheal \
+  -e AUTOHEAL_INTERVAL=30 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /etc/localtime:/etc/localtime:ro \
+  willfarrell/autoheal:1.1.0
+```
+
+Autoheal checks every 30 seconds. When the miner becomes unhealthy, it stops and restarts it; `--label autoheal.stop.timeout=30` gives the miner up to 30 seconds to stop cleanly before Docker kills it. `--network=none` is sufficient because Autoheal reaches Docker through the mounted Unix socket, and the read-only `/etc/localtime` mount keeps its log timestamps aligned with the host.
+
+> [!WARNING]
+> Mounting `/var/run/docker.sock` gives Autoheal control over the Docker daemon. Treat access to the Autoheal container as privileged host access; see Docker's [daemon attack-surface guidance](https://docs.docker.com/engine/security/#docker-daemon-attack-surface).
+
+### 5. Configure automatic updates with Watchtower
 
 `--pull=always` does not update an existing container. To follow new `master` images from the [fork package](https://github.com/Valentin-Metz/TwitchDropsMiner/pkgs/container/twitchdropsminer), run [NickFedor Watchtower](https://watchtower.nickfedor.com/latest/configuration/introduction/) alongside the miner:
 
@@ -73,7 +94,7 @@ docker run -d \
 The positional container name limits Watchtower to `twitch_drops_miner`; it ignores other containers. Every hour, Watchtower checks the rolling tag, pulls a changed image, and recreates the miner with its existing bind mounts, network mode, and restart policy. `--cleanup` removes the old image after an update. `--include-restarting` lets Watchtower update the miner during a restart cycle. See the official documentation for [scheduling](https://watchtower.nickfedor.com/latest/configuration/scheduling/), [update behavior](https://watchtower.nickfedor.com/latest/configuration/update-behavior/), and [container selection](https://watchtower.nickfedor.com/latest/configuration/container-selection/).
 
 > [!WARNING]
-> Mounting `/var/run/docker.sock` gives Watchtower control over the Docker daemon. Treat access to the Watchtower container as privileged host access; see Docker's [daemon attack-surface guidance](https://docs.docker.com/engine/security/#docker-daemon-attack-surface).
+> Mounting `/var/run/docker.sock` gives Watchtower control over the Docker daemon. Treat access to either helper container as privileged host access; see Docker's [daemon attack-surface guidance](https://docs.docker.com/engine/security/#docker-daemon-attack-surface).
 
 > [!NOTE]
 > The rest of this README is inherited from [DevilXD's upstream project](https://github.com/DevilXD/TwitchDropsMiner). Its **Project goals** section says that Docker and remote 24/7 deployment are outside upstream's scope. This fork adds the Xvfb container, stdout diagnostics, a heartbeat health check, GHCR publishing, and a scheduled upstream rebase.
