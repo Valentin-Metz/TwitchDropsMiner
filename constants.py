@@ -128,6 +128,8 @@ PING_INTERVAL = timedelta(minutes=3)
 PING_TIMEOUT = timedelta(seconds=10)
 ONLINE_DELAY = timedelta(seconds=120)
 WATCH_INTERVAL = timedelta(seconds=59)
+CAMPAIGN_PROBE_INTERVAL = timedelta(minutes=5)
+CAMPAIGN_PROBE_JITTER = timedelta(seconds=30)
 # Strings
 WINDOW_TITLE = f"Twitch Drops Miner v{__version__} (by DevilXD)"
 # Logging

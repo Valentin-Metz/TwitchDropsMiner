@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import asyncio
 import logging
+import random
 from logging import DEBUG
 from time import time
 from copy import deepcopy
@@ -49,6 +50,8 @@ from constants import (
     MAX_CHANNELS,
     GQL_QUERIES,
     WATCH_INTERVAL,
+    CAMPAIGN_PROBE_INTERVAL,
+    CAMPAIGN_PROBE_JITTER,
     State,
     ClientType,
     PriorityMode,
@@ -442,6 +445,7 @@ class Twitch:
         self._drops: dict[str, TimedDrop] = {}
         self._campaigns: dict[str, DropsCampaign] = {}
         self._mnt_triggers: deque[datetime] = deque()
+        self._campaign_fingerprint: frozenset[tuple[str, str]] = frozenset()
         # NOTE: GQL is pretty volatile and breaks everything if one runs into their rate limit.
         # Do not modify the default, safe values.
         self._qgl_limiter = RateLimiter(capacity=5, window=1)
@@ -454,12 +458,14 @@ class Twitch:
         # Storing and watching channels
         self.channels: OrderedDict[int, Channel] = OrderedDict()
         self.watching_channel: AwaitableValue[Channel] = AwaitableValue()
+        self._channel_retry_games: set[Game] | None = None
         self._watching_task: asyncio.Task[None] | None = None
         self._watching_restart = asyncio.Event()
         # Websocket
         self.websocket = WebsocketPool(self)
         # Maintenance task
         self._mnt_task: asyncio.Task[None] | None = None
+        self._campaign_probe_task: asyncio.Task[None] | None = None
 
     async def get_session(self) -> aiohttp.ClientSession:
         if (session := self._session) is not None:
@@ -505,6 +511,9 @@ class Twitch:
         if self._mnt_task is not None:
             self._mnt_task.cancel()
             self._mnt_task = None
+        if self._campaign_probe_task is not None:
+            self._campaign_probe_task.cancel()
+            self._campaign_probe_task = None
         # stop websocket, close session and save cookies
         await self.websocket.stop(clear_topics=True)
         if self._session is not None:
@@ -598,6 +607,18 @@ class Twitch:
                 wanted_games.append(game)
         return wanted_games
 
+    def _get_channel_retry_games(self) -> set[Game]:
+        """Return active non-ACL games that need another live-channel search."""
+        return {
+            campaign.game
+            for campaign in self.inventory
+            if (
+                campaign.game in self.wanted_games
+                and not campaign.allowed_channels
+                and campaign.can_earn()
+            )
+        }
+
     def get_priority(self, channel: Channel) -> int:
         """
         Return a priority number for a given channel.
@@ -672,6 +693,7 @@ class Twitch:
                 # clear the flag and wait until it's set again
                 self._state_change.clear()
             elif self._state is State.INVENTORY_FETCH:
+                self._channel_retry_games = None
                 self.gui.tray.change_icon("maint")
                 # ensure the websocket is running
                 await self.websocket.start()
@@ -743,29 +765,37 @@ class Twitch:
                 new_channels: set[Channel] = set(channels.values())
                 channels.clear()
                 self.gui.channels.clear()
-                # gather and add ACL channels from campaigns
-                # NOTE: we consider only campaigns that can be progressed
-                # NOTE: we use another set so that we can set them online separately
-                no_acl: set[Game] = set()
-                acl_channels: set[Channel] = set()
-                next_hour = datetime.now(timezone.utc) + timedelta(hours=1)
-                for campaign in self.inventory:
-                    if (
-                        campaign.game in self.wanted_games
-                        and campaign.can_earn_within(next_hour)
-                    ):
-                        if campaign.allowed_channels:
-                            acl_channels.update(campaign.allowed_channels)
-                        else:
-                            no_acl.add(campaign.game)
-                # remove all ACL channels that already exist from the other set
-                acl_channels.difference_update(new_channels)
-                # use the other set to set them online if possible
-                await self.bulk_check_online(acl_channels)
-                # finally, add them as new channels
-                new_channels.update(acl_channels)
+                # Gather and add ACL channels from campaigns. A campaign-probe retry
+                # only searches non-ACL games that currently have no usable channel;
+                # existing channels and subscriptions remain available.
+                retry_games = self._channel_retry_games
+                self._channel_retry_games = None
+                if retry_games is None:
+                    # NOTE: we consider only campaigns that can be progressed
+                    # NOTE: we use another set so that we can set them online separately
+                    no_acl: set[Game] = set()
+                    acl_channels: set[Channel] = set()
+                    next_hour = datetime.now(timezone.utc) + timedelta(hours=1)
+                    for campaign in self.inventory:
+                        if (
+                            campaign.game in self.wanted_games
+                            and campaign.can_earn_within(next_hour)
+                        ):
+                            if campaign.allowed_channels:
+                                acl_channels.update(campaign.allowed_channels)
+                            else:
+                                no_acl.add(campaign.game)
+                    # remove all ACL channels that already exist from the other set
+                    acl_channels.difference_update(new_channels)
+                    # use the other set to set them online if possible
+                    await self.bulk_check_online(acl_channels)
+                    # finally, add them as new channels
+                    new_channels.update(acl_channels)
+                else:
+                    no_acl = retry_games
+                    acl_channels = set()
                 for game in no_acl:
-                    # for every campaign without an ACL, for it's game,
+                    # for every campaign without an ACL, for its game,
                     # add a list of live channels with drops enabled
                     new_channels.update(await self.get_live_streams(game, drops_enabled=True))
                 # sort them descending by viewers, by priority and by game priority
@@ -842,6 +872,7 @@ class Twitch:
                     to_add_topics,
                     ordered_channels,
                     watching_channel,
+                    retry_games,
                 )
             elif self._state is State.CHANNEL_SWITCH:
                 if self.settings.dump:
@@ -975,6 +1006,74 @@ class Twitch:
                     else:
                         logger.log(CALL, "No active drop could be determined")
             await self._watch_sleep(interval - min(time() - last_sent, interval))
+
+    @staticmethod
+    def _campaigns_fingerprint(
+        campaigns: abc.Mapping[str, JsonType],
+    ) -> frozenset[tuple[str, str]]:
+        """Identify structural campaign-list changes without using mutable progress."""
+        return frozenset(
+            (campaign_id, campaign["status"])
+            for campaign_id, campaign in campaigns.items()
+        )
+
+    async def _fetch_available_campaigns(self) -> dict[str, JsonType]:
+        response = await self.gql_request(GQL_QUERIES["Campaigns"])
+        available_list: list[JsonType] = (
+            response["data"]["currentUser"]["dropCampaigns"] or []
+        )
+        applicable_statuses = ("ACTIVE", "UPCOMING")
+        return {
+            campaign["id"]: campaign
+            for campaign in available_list
+            if campaign["status"] in applicable_statuses
+        }
+
+    async def _check_campaign_updates(self) -> None:
+        available_campaigns = await self._fetch_available_campaigns()
+        fingerprint = self._campaigns_fingerprint(available_campaigns)
+        if fingerprint != self._campaign_fingerprint:
+            logger.info(
+                "Campaign change detected "
+                f"({len(self._campaign_fingerprint)} -> {len(fingerprint)}); "
+                "requesting an inventory refresh"
+            )
+            self.change_state(State.INVENTORY_FETCH)
+            return
+        logger.log(
+            CALL,
+            f"Campaign probe found no changes ({len(fingerprint)} campaigns)",
+        )
+
+        if self._state is State.IDLE:
+            retry_games = self._get_channel_retry_games()
+            if retry_games:
+                logger.log(
+                    CALL,
+                    "Campaign probe requests channel rediscovery for: "
+                    + ", ".join(sorted(game.name for game in retry_games)),
+                )
+                self._channel_retry_games = retry_games
+                self.change_state(State.CHANNELS_FETCH)
+
+    @task_wrapper(critical=True)
+    async def _campaign_probe_loop(self) -> None:
+        interval = CAMPAIGN_PROBE_INTERVAL.total_seconds()
+        jitter = CAMPAIGN_PROBE_JITTER.total_seconds()
+        delay = random.uniform(0, interval)
+        while True:
+            await asyncio.sleep(delay)
+            if self._state is State.EXIT:
+                return
+            if self._state not in (
+                State.INVENTORY_FETCH,
+                State.GAMES_UPDATE,
+                State.CHANNELS_FETCH,
+                State.CHANNELS_CLEANUP,
+                State.RESTART,
+            ):
+                await self._check_campaign_updates()
+            delay = random.uniform(interval - jitter, interval + jitter)
 
     @task_wrapper(critical=True)
     async def _maintenance_task(self) -> None:
@@ -1446,15 +1545,8 @@ class Twitch:
             b["id"]: timestamp(b["lastAwardedAt"]) for b in inventory["gameEventDrops"]
         }
         inventory_data: dict[str, JsonType] = {c["id"]: c for c in ongoing_campaigns}
-        # fetch general available campaigns data (campaigns)
-        response = await self.gql_request(GQL_QUERIES["Campaigns"])
-        available_list: list[JsonType] = response["data"]["currentUser"]["dropCampaigns"] or []
-        applicable_statuses = ("ACTIVE", "UPCOMING")
-        available_campaigns: dict[str, JsonType] = {
-            c["id"]: c
-            for c in available_list
-            if c["status"] in applicable_statuses  # that are currently not expired
-        }
+        available_campaigns = await self._fetch_available_campaigns()
+        self._campaign_fingerprint = self._campaigns_fingerprint(available_campaigns)
         # fetch detailed data for each campaign, in chunks
         status_update(_("gui", "status", "fetching_campaigns"))
         fetch_campaigns_tasks: list[asyncio.Task[Any]] = [
@@ -1556,6 +1648,8 @@ class Twitch:
         if self._mnt_task is not None and not self._mnt_task.done():
             self._mnt_task.cancel()
         self._mnt_task = asyncio.create_task(self._maintenance_task())
+        if self._campaign_probe_task is None or self._campaign_probe_task.done():
+            self._campaign_probe_task = asyncio.create_task(self._campaign_probe_loop())
 
     def get_active_campaign(self, channel: Channel | None = None) -> DropsCampaign | None:
         if not self.wanted_games:
