@@ -107,6 +107,12 @@ CACHE_PATH = Path(WORKING_DIR, "cache")
 CACHE_DB = Path(CACHE_PATH, "mapping.json")
 COOKIES_PATH = Path(WORKING_DIR, "cookies.jar")
 SETTINGS_PATH = Path(WORKING_DIR, "settings.json")
+HEALTHCHECK_PATH = Path(
+    os.environ.get(
+        "HEALTHCHECK_PATH",
+        str(WORKING_DIR / "healthcheck.timestamp"),
+    )
+)
 # Typing
 JsonType = Dict[str, Any]
 URLType = NewType("URLType", str)
@@ -128,6 +134,7 @@ PING_INTERVAL = timedelta(minutes=3)
 PING_TIMEOUT = timedelta(seconds=10)
 ONLINE_DELAY = timedelta(seconds=120)
 WATCH_INTERVAL = timedelta(seconds=59)
+HEALTHCHECK_INTERVAL = timedelta(seconds=30)
 CAMPAIGN_PROBE_INTERVAL = timedelta(minutes=5)
 CAMPAIGN_PROBE_JITTER = timedelta(seconds=30)
 # Strings
