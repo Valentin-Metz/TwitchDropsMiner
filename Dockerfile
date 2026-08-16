@@ -8,22 +8,28 @@ RUN apt-get install -y libgirepository1.0-dev xvfb \
 COPY . /TwitchDropsMiner/
 WORKDIR /TwitchDropsMiner/
 
+ENV HEALTHCHECK_PATH=/TwitchDropsMiner/healthcheck.timestamp \
+    HEALTHCHECK_MAX_AGE=120
+
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
-RUN chmod +x ./docker_entrypoint.sh
+RUN chmod +x ./docker_entrypoint.sh ./healthcheck.sh \
+    && date +%s > "$HEALTHCHECK_PATH" \
+    && ./healthcheck.sh \
+    && rm -f "$HEALTHCHECK_PATH"
 ENTRYPOINT ["./docker_entrypoint.sh"]
 
-HEALTHCHECK --interval=10s --timeout=5s --start-period=5m --retries=3 CMD ./healthcheck.sh
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5m --retries=3 CMD ./healthcheck.sh
 
-CMD timeout $(( (60 - $(date +%-M)) * 60 - $(date +%-S) )) python main.py -vvvv
+CMD ["bash", "-c", "exec timeout --kill-after=30s \"$(( (60 - $(date +%-M)) * 60 - $(date +%-S) ))s\" python main.py -vvvv"]
 
 # Example command to build:
 # docker build -t twitch_drops_miner .
 
 # Suggested command to run:
-# docker run -itd --init --pull=always --restart=always -v ./cookies.jar:/TwitchDropsMiner/cookies.jar -v ./settings.json:/TwitchDropsMiner/settings.json:ro -v /etc/localtime:/etc/localtime:ro --name twitch_drops_miner ghcr.io/valentin-metz/twitchdropsminer:master
+# docker run -itd --init --pull=always --restart=always --network=host --label autoheal=true --label autoheal.stop.timeout=30 -v ./cookies.jar:/TwitchDropsMiner/cookies.jar -v ./settings.json:/TwitchDropsMiner/settings.json:ro -v /etc/localtime:/etc/localtime:ro --name twitch_drops_miner ghcr.io/valentin-metz/twitchdropsminer:master
 
 # Suggested additional containers for monitoring:
-# docker run -d --restart=always --name autoheal -e AUTOHEAL_CONTAINER_LABEL=all -v /var/run/docker.sock:/var/run/docker.sock -v /etc/localtime:/etc/localtime:ro willfarrell/autoheal
+# docker run -d --restart=always --network=none --name autoheal -e AUTOHEAL_CONTAINER_LABEL=autoheal -e AUTOHEAL_INTERVAL=30 -v /var/run/docker.sock:/var/run/docker.sock -v /etc/localtime:/etc/localtime:ro willfarrell/autoheal:1.1.0
 # docker run -d --restart=always --name watchtower -v ~/.docker/config.json:/config.json:ro -v /var/run/docker.sock:/var/run/docker.sock -v /etc/localtime:/etc/localtime:ro containrrr/watchtower --cleanup --include-restarting --include-stopped --interval 60
